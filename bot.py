@@ -134,13 +134,15 @@ async def download_document_bytes(bot: Bot, message: Message) -> bytes:
 
 async def on_start(message: Message):
     await message.answer(
-        "Привет! Я помогу сбалансировать упражнения в Spotlight 2.\n"
+        "Привет! Я помогу сбалансировать упражнения в учебнике.\n"
         "Шаги:\n"
-        "1) Отправь CSV с упражнениями (instruction, page_num, pred_label).\n"
-        "2) Отправь TXT с вокабуляром по юнитам.\n"
-        "3) Команда /generate — сгенерировать коммуникативные упражнения и получить 2 таблицы.\n\n"
-        "Команда:\n"
-        "/generate — генерация упражнений"
+        "1) Отправь CSV файл с упражнениями (instruction, page_num, pred_label).\n"
+        "2) Получи статистику.\n"
+        "3) Отправь TXT с вокабуляром по юнитам.\n"
+        "4) Используй команду /generate , чтобы сгенерировать коммуникативные упражнения.\n\n"
+        "Команды:\n"
+        "/start  показать статистику\n"
+        "/generate  генерация упражнений"
     )
 
 
@@ -182,10 +184,7 @@ async def on_generate(message: Message, state: FSMContext):
         await message.answer("Не удалось распределить задания по юнитам.")
         return
 
-    plan_text = "\n".join([f"{unit}: {count}" for unit, count in plan.items()])
-    await message.answer(
-        "План генерации (по юнитам):\n" + plan_text
-    )
+    status_message = await message.answer("Идет обработка...")
 
     new_rows = list(rows)
     generated_rows: list[dict] = []
@@ -195,7 +194,6 @@ async def on_generate(message: Message, state: FSMContext):
             words = get_all_words(vocab, limit=30)
 
         prompt = build_prompt(count, words)
-        await message.answer(f"Генерирую упражнения для {unit}...")
 
         try:
             generated_text = await generate_exercises(prompt, count, words)
@@ -219,6 +217,12 @@ async def on_generate(message: Message, state: FSMContext):
             generated_rows.append(row)
 
     stats_after = analyze_exercises(new_rows)
+
+    # Удаляем сообщение о прогрессе
+    try:
+        await message.bot.delete_message(chat_id=status_message.chat.id, message_id=status_message.message_id)
+    except Exception:
+        pass
     csv_bytes = build_csv_bytes(new_rows)
     input_file = BufferedInputFile(csv_bytes, filename="balanced_exercises.csv")
     await message.answer_document(input_file)
