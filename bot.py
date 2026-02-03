@@ -9,7 +9,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.types import BufferedInputFile, Message
 
-from analyzer import analyze_exercises, calc_needed_total, parse_csv_bytes
+from analyzer import analyze_exercises, calc_needed_total, parse_csv_bytes, parse_xlsx_bytes
 from config import BOT_TOKEN, TARGET_COMMUNICATIVE_RATIO
 from llm_client import LLMError, generate_exercises
 from vocabulary_parser import get_all_words, get_words_for_unit, parse_vocabulary
@@ -99,6 +99,28 @@ def build_csv_bytes(rows: list[dict]) -> bytes:
     return output.getvalue().encode("utf-8")
 
 
+def build_xlsx_bytes(rows: list[dict]) -> bytes:
+    """Собираем XLSX из списка словарей."""
+    try:
+        from openpyxl import Workbook
+    except ImportError as exc:
+        raise RuntimeError("Для записи .xlsx нужен пакет openpyxl.") from exc
+
+    output = BytesIO()
+    has_unit = any("unit" in r for r in rows)
+    fieldnames = ["instruction", "page_num", "pred_label"]
+    if has_unit:
+        fieldnames.append("unit")
+
+    wb = Workbook()
+    ws = wb.active
+    ws.append(fieldnames)
+    for row in rows:
+        ws.append([row.get(k, "") for k in fieldnames])
+    wb.save(output)
+    return output.getvalue()
+
+
 def distribute_needed_across_units(needed_total: int, units: list[str]) -> dict:
     """Распределяем нужное количество упражнений по юнитам без ограничения 1-3."""
     if needed_total <= 0 or not units:
@@ -136,7 +158,7 @@ async def on_start(message: Message):
     await message.answer(
         "Привет! Я помогу сбалансировать упражнения в учебнике.\n"
         "Шаги:\n"
-        "1) Отправь CSV файл с упражнениями (instruction, page_num, pred_label).\n"
+        "1) Отправь CSV или XLSX файл с упражнениями (instruction, page_num, pred_label).\n"
         "2) Получи статистику.\n"
         "3) Отправь TXT с вокабуляром по юнитам.\n"
         "4) Используй команду /generate , чтобы сгенерировать коммуникативные упражнения.\n\n"
@@ -149,7 +171,7 @@ async def on_start(message: Message):
 async def on_help(message: Message):
     await message.answer(
         "Инструкция:\n"
-        "1) Загрузи CSV с упражнениями.\n"
+        "1) Загрузи CSV или XLSX с упражнениями.\n"
         "2) Загрузи TXT с вокабуляром (Unit/Module + слова).\n"
         "3) Используй /generate для добавления коммуникативных упражнений.\n\n"
         "Цель: приблизиться к балансу 50/50 (может быть 60-70% коммуникативных)."
@@ -162,7 +184,7 @@ async def on_generate(message: Message, state: FSMContext):
     vocab = data.get("vocab")
 
     if not rows:
-        await message.answer("Сначала загрузите CSV файл.")
+        await message.answer("Сначала загрузите CSV/XLSX файл.")
         return
     if not vocab:
         await message.answer("Сначала загрузите TXT с вокабуляром.")
@@ -223,13 +245,22 @@ async def on_generate(message: Message, state: FSMContext):
         await message.bot.delete_message(chat_id=status_message.chat.id, message_id=status_message.message_id)
     except Exception:
         pass
-    csv_bytes = build_csv_bytes(new_rows)
-    input_file = BufferedInputFile(csv_bytes, filename="balanced_exercises.csv")
+    try:
+        xlsx_bytes = build_xlsx_bytes(new_rows)
+    except Exception as exc:
+        await message.answer(f"Ошибка формирования XLSX: {exc}")
+        return
+
+    input_file = BufferedInputFile(xlsx_bytes, filename="balanced_exercises.xlsx")
     await message.answer_document(input_file)
 
     if generated_rows:
-        gen_bytes = build_csv_bytes(generated_rows)
-        gen_file = BufferedInputFile(gen_bytes, filename="generated_exercises.csv")
+        try:
+            gen_bytes = build_xlsx_bytes(generated_rows)
+        except Exception as exc:
+            await message.answer(f"Ошибка формирования XLSX (generated): {exc}")
+            return
+        gen_file = BufferedInputFile(gen_bytes, filename="generated_exercises.xlsx")
         await message.answer_document(gen_file)
     msg = (
         "Статистика до/после:\n\n"
@@ -267,6 +298,18 @@ async def on_document(message: Message, bot: Bot, state: FSMContext):
         await message.answer("CSV файл загружен.\n" + format_stats(stats))
         return
 
+    if filename.endswith(".xlsx"):
+        try:
+            rows = parse_xlsx_bytes(file_bytes)
+        except Exception as exc:
+            await message.answer(f"Ошибка чтения XLSX: {exc}")
+            return
+        await state.update_data(csv_rows=rows)
+        stats = analyze_exercises(rows)
+        await state.update_data(stats=stats)
+        await message.answer("XLSX файл загружен.\n" + format_stats(stats))
+        return
+
     if filename.endswith(".txt"):
         text = _decode_bytes(file_bytes)
         try:
@@ -279,7 +322,7 @@ async def on_document(message: Message, bot: Bot, state: FSMContext):
         await message.answer(f"TXT файл загружен. Найдено юнитов: {units_count}.")
         return
 
-    await message.answer("Поддерживаются только файлы CSV и TXT.")
+    await message.answer("Поддерживаются только файлы CSV, XLSX и TXT.")
 
 
 async def main():

@@ -1,5 +1,5 @@
 import csv
-from io import StringIO
+from io import BytesIO, StringIO
 import math
 
 
@@ -52,6 +52,52 @@ def parse_csv_bytes(raw: bytes) -> list[dict]:
         if "module" in row:
             norm_row["module"] = row.get("module", "").strip()
         rows.append(norm_row)
+    return rows
+
+
+def parse_xlsx_bytes(raw: bytes) -> list[dict]:
+    """Parse XLSX bytes into a list of dicts."""
+    try:
+        from openpyxl import load_workbook
+    except ImportError as exc:
+        raise ValueError("Для чтения .xlsx нужен пакет openpyxl.") from exc
+
+    wb = load_workbook(BytesIO(raw), read_only=True, data_only=True)
+    ws = wb.active
+    rows_iter = ws.iter_rows(values_only=True)
+    header_row = next(rows_iter, None)
+    if not header_row:
+        raise ValueError("XLSX пустой или не содержит заголовков.")
+
+    headers = [str(h).strip() if h is not None else "" for h in header_row]
+    header_map = {h.lower(): idx for idx, h in enumerate(headers) if h}
+    required = {"instruction", "page_num", "pred_label"}
+    missing = required - set(header_map.keys())
+    if missing:
+        raise ValueError(f"В XLSX отсутствуют столбцы: {', '.join(sorted(missing))}")
+
+    def _cell_to_str(value) -> str:
+        if value is None:
+            return ""
+        return str(value).strip()
+
+    rows = []
+    for row in rows_iter:
+        if not row:
+            continue
+        if all(v is None or str(v).strip() == "" for v in row):
+            continue
+        norm_row = {
+            "instruction": _cell_to_str(row[header_map["instruction"]]),
+            "page_num": _cell_to_str(row[header_map["page_num"]]),
+            "pred_label": normalize_label(_cell_to_str(row[header_map["pred_label"]])),
+        }
+        if "unit" in header_map:
+            norm_row["unit"] = _cell_to_str(row[header_map["unit"]])
+        if "module" in header_map:
+            norm_row["module"] = _cell_to_str(row[header_map["module"]])
+        rows.append(norm_row)
+
     return rows
 
 

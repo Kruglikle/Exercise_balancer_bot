@@ -10,6 +10,15 @@ load_dotenv(BASE_DIR / ".env")
 # Токен Telegram-бота
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 
+# OpenRouter (Qwen via OpenRouter)
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
+OPENROUTER_ENDPOINT = os.getenv(
+    "OPENROUTER_ENDPOINT", "https://openrouter.ai/api/v1/chat/completions"
+)
+OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "").strip()
+OPENROUTER_REFERER = os.getenv("OPENROUTER_REFERER", "").strip()
+OPENROUTER_TITLE = os.getenv("OPENROUTER_TITLE", "").strip()
+
 # Ключ для DashScope (Qwen)
 QWEN_API_KEY = os.getenv("QWEN_API_KEY")
 
@@ -17,7 +26,7 @@ QWEN_API_KEY = os.getenv("QWEN_API_KEY")
 QWEN_ENDPOINT = "https://dashscope.aliyuncs.com/api/v1/services/aigc/text-generation/generation"
 QWEN_MODEL = "qwen-turbo"
 
-# Провайдер генерации: qwen / ollama / local (если не задан, выбирается автоматически)
+# Провайдер генерации: openrouter / qwen / ollama / local (если не задан, выбирается автоматически)
 LLM_PROVIDER = os.getenv("LLM_PROVIDER", "").strip().lower()
 
 # Настройки Ollama (локальный открытый инструмент)
