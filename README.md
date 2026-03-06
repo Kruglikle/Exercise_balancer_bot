@@ -1,95 +1,125 @@
-# Exercise Balancer Bot (Spotlight 2)
+# Exercise Balancer Bot
 
-Telegram-бот на aiogram 3.x для балансировки упражнений в учебнике Spotlight 2.
-Работает в 3 шага:
-1) Загрузи CSV или XLSX с упражнениями.
-2) Загрузи TXT с вокабуляром по юнитам.
-3) Команда /generate — добавляет коммуникативные упражнения для баланса 50/50 (или выше).
+Telegram bot based on aiogram 3 for generating URU (lesson exercise sets) for Spotlight 2.
 
-## Возможности
-- Анализ CSV/XLSX (количество и доля коммуникативных/языковых).
-- Генерация коммуникативных упражнений по вокабуляру юнитов.
-- Выгрузка 2 файлов в формате Excel (.xlsx): полный датасет и только сгенерированные упражнения.
+## Features
+- Generates a complete URU set from text input (no file upload required).
+- Supports two workflows:
+  - `/generate` for step-by-step input.
+  - `/generate_one` for one-message input.
+- Sends output in chat and as a `.docx` file.
+- Saves generated documents to `generated_documents/`.
+- Supports multiple LLM providers: `openrouter`, `qwen`, `ollama`, `local`.
+- Uses editable prompt template from `PROMPT.md`.
+- Can send local Spotlight 2 student/teacher PDFs from the start menu.
 
-## Методическая логика
-Бот помогает сбалансировать задания в учебнике, чтобы увеличить долю коммуникативных упражнений и приблизиться к целевому соотношению (обычно 50/50 или выше).
-
-Как это работает с методической точки зрения:
-- На вход подаётся таблица упражнений с метками `communicative` и `linguistic`.
-- Бот считает текущий баланс и определяет, сколько именно коммуникативных заданий нужно добавить.
-- Количество добавляемых заданий распределяется по юнитам в соответствии с порядком вокабуляра.
-- Для каждого юнита создаются задания, основанные на лексике этого юнита (если слов мало — берётся общий список).
-- Все создаваемые задания нацелены на продуктивную устную речь:
-  - используются визуальные опоры (покажи/укажи/посмотри),
-  - задаются короткие фразы и простые диалоги,
-  - есть игровые элементы,
-  - письменные задания исключаются.
-
-В результате преподаватель получает:
-- обновлённый датасет упражнений (исходные + сгенерированные),
-- отдельный файл только с новыми коммуникативными упражнениями,
-- статистику баланса «до/после».
-
-## Требования
+## Requirements
 - Python 3.10+
-- Telegram Bot Token
-- openpyxl (??? Excel)
+- Telegram bot token
+- Optional: OpenRouter API key, DashScope (Qwen) API key, or local Ollama
 
-## Установка
+## Installation
 ```bash
+python -m venv .venv
+# Windows PowerShell
+.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
 ```
 
-## Настройка окружения
-Создай файл `.env` в корне проекта (рядом с `bot.py`) и укажи токен:
-```
+## Configuration
+Create `.env` in the project root (or copy from `.env.example`).
+
+Minimum required:
+```env
 BOT_TOKEN=YOUR_TELEGRAM_BOT_TOKEN
-LLM_PROVIDER=local
 ```
 
-OpenRouter (Qwen via OpenRouter):
-```
+### Provider options
+
+OpenRouter:
+```env
+LLM_PROVIDER=openrouter
 OPENROUTER_API_KEY=YOUR_OPENROUTER_KEY
-OPENROUTER_MODEL=YOUR_OPENROUTER_QWEN_MODEL
-# Optional
+OPENROUTER_MODEL=YOUR_OPENROUTER_MODEL
 OPENROUTER_ENDPOINT=https://openrouter.ai/api/v1/chat/completions
 OPENROUTER_REFERER=
 OPENROUTER_TITLE=
-LLM_PROVIDER=openrouter
 ```
 
-Опционально можно использовать локальный Ollama:
+DashScope Qwen:
+```env
+LLM_PROVIDER=qwen
+QWEN_API_KEY=YOUR_DASHSCOPE_KEY
 ```
+
+Ollama:
+```env
 LLM_PROVIDER=ollama
 OLLAMA_ENDPOINT=http://localhost:11434/api/generate
 OLLAMA_MODEL=qwen2.5:7b-instruct
 ```
 
-## Запуск
+Local fallback (no external API):
+```env
+LLM_PROVIDER=local
+```
+
+If `LLM_PROVIDER` is empty, the bot selects provider automatically:
+1. `openrouter` if `OPENROUTER_API_KEY` is present.
+2. `qwen` if `QWEN_API_KEY` is present.
+3. `local` fallback otherwise.
+
+## Run
 ```bash
 python bot.py
 ```
 
-## Форматы файлов
+## Bot Commands
+- `/start` - welcome message and action buttons.
+- `/help` - usage help.
+- `/generate` - guided multi-step generation flow.
+- `/generate_one` - one-message generation flow.
+- `/show_prompt` - show and send current `PROMPT.md`.
+- `/cancel` - cancel current input flow.
 
-CSV/XLSX:
-```
-instruction,page_num,pred_label
-Слушай и повторяй...,5,linguistic
-Поговори с другом...,6,communicative
+## Input format for `/generate_one`
+Send all fields in one message. Example:
+
+```text
+Unit: Unit 3a
+New vocabulary/grammar:
+clothes: jacket, shoes, dress
+have got / has got
+Old support material:
+colors, is it ... ?
 ```
 
-TXT (вокабуляр, пример):
-```
-Module 1
-Unit 1: My Home!
-bed /bed/ кровать
-chair /tʃeər/ стул
-```
+Required fields:
+- `Unit`
+- `New vocabulary/grammar`
 
-## Команды бота
-- /start — инструкция
-- /generate — генерация упражнений
+Optional fields:
+- `Old support material` (you can pass `-` or `none`)
 
-## Безопасность
-Файл `.env` исключён из Git (см. `.gitignore`).
+## Output
+- Generated URU text in Telegram messages.
+- Generated `.docx` file sent back to user.
+- Local `.docx` copy in `generated_documents/`.
+
+## Optional local materials
+If these files are placed in the project root, the bot can send them from `/start`:
+- Teacher book PDF (file name contains `teacher` and `book`).
+- Student book PDF (file name contains `student` and `book`).
+
+## Project Structure
+- `bot.py` - Telegram handlers, input parsing, docx export.
+- `llm_client.py` - provider selection and unified generation API.
+- `openrouter_client.py` - OpenRouter integration.
+- `qwen_client.py` - DashScope Qwen integration.
+- `ollama_client.py` - Ollama integration.
+- `local_generator.py` - local template fallback.
+- `PROMPT.md` - generation prompt template.
+
+## Security
+- `.env` is ignored by git.
+- Do not commit real API keys or bot tokens.
