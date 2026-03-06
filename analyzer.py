@@ -51,6 +51,8 @@ def parse_csv_bytes(raw: bytes) -> list[dict]:
             norm_row["unit"] = row.get("unit", "").strip()
         if "module" in row:
             norm_row["module"] = row.get("module", "").strip()
+        if "exercise_type" in row:
+            norm_row["exercise_type"] = row.get("exercise_type", "").strip()
         rows.append(norm_row)
     return rows
 
@@ -96,6 +98,8 @@ def parse_xlsx_bytes(raw: bytes) -> list[dict]:
             norm_row["unit"] = _cell_to_str(row[header_map["unit"]])
         if "module" in header_map:
             norm_row["module"] = _cell_to_str(row[header_map["module"]])
+        if "exercise_type" in header_map:
+            norm_row["exercise_type"] = _cell_to_str(row[header_map["exercise_type"]])
         rows.append(norm_row)
 
     return rows
